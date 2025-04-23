@@ -95,10 +95,16 @@ elif st.session_state['tab'] == "Preprocessing":
                 status_text.text(message)
 
             with st.spinner('Sedang melakukan preprocessing...'):
+                start_time = time.time()  # waktu mulai
                 preprocessed_df = preproces(st.session_state['df'], progress_callback=update_progress)
+                end_time = time.time()  # waktu selesai
+
+                processing_time = end_time - start_time
+                minutes, seconds = divmod(processing_time, 60)
                 st.session_state['preprocessed_df'] = preprocessed_df
                 st.session_state['run_preprocessing'] = False
-                st.success("Preprocessing selesai!")
+                st.success(f"Preprocessing selesai dalam {int(minutes)} menit {int(seconds)} detik!")
+
 
         if 'preprocessed_df' in st.session_state:
             st.subheader('Data Setelah Preprocessing')
