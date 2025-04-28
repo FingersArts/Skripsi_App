@@ -5,6 +5,7 @@ import nltk
 import numpy as np
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+from functools import lru_cache
 import requests
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory, StopWordRemover, ArrayDictionary
@@ -87,17 +88,17 @@ def stopword(text):
     return ' '.join(filtered_sentence)
 
 # Stemming
+factory = StemmerFactory()
+stemmer = factory.create_stemmer()
+
+@lru_cache(maxsize=None)
+def cached_stem(word):
+    return stemmer.stem(word)
+
 def stemming(text_cleaning):
-  factory = StemmerFactory()
-  stemmer = factory.create_stemmer()
-  do = []
-  for w in text_cleaning:
-    dt = stemmer.stem(w)
-    do.append(dt)
-  d_clean = []
-  d_clean = " ".join(do)
-  print(d_clean)
-  return d_clean
+    stemmed_words = [cached_stem(word) for word in text_cleaning]
+    d_clean = " ".join(stemmed_words)
+    return d_clean
 
 # Main function to process the dataframe
 def preproces(df, progress_callback=None):
@@ -109,6 +110,8 @@ def preproces(df, progress_callback=None):
         progress_callback(25, "Membersihkan teks (cleaning)...")
     df['cleanedtext'] = df['casefolding'].apply(cleaning_text)
 
+    df = df.drop_duplicates(subset='cleanedtext').reset_index(drop=True)
+
     df = df.dropna(subset=['cleanedtext'])
     df = df[df['cleanedtext'].str.strip() != ""]
 
@@ -119,6 +122,10 @@ def preproces(df, progress_callback=None):
     if progress_callback:
         progress_callback(60, "Menghapus stopword...")
     df['stopwordremoved'] = df['slangremoved'].apply(stopword)
+
+    # Hapus kosong lagi
+    df = df.dropna(subset=['stopwordremoved'])
+    df = df[df['stopwordremoved'].str.strip() != ""]
 
     if progress_callback:
         progress_callback(75, "Tokenisasi...")
