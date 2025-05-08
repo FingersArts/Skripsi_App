@@ -1,4 +1,3 @@
-# Import Library
 import pandas as pd
 import re
 import nltk
@@ -9,98 +8,75 @@ from functools import lru_cache
 import requests
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory, StopWordRemover, ArrayDictionary
-import matplotlib.pyplot as plt
 import emoji
 
+# Download resource NLTK
 nltk.download(['stopwords', 'punkt'])
 
+# Inisialisasi Stemmer
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
 
-# Cleaning
+# --- CLEANING FUNCTION ---
 def cleaning_text(text):
-    # Hapus URL
-    url_pattern = re.compile(r'https?://\S+|www\.\S+')
-    text = url_pattern.sub(r'', text)
+    if not isinstance(text, str):
+        return ""
 
+    # Hapus URL
+    text = re.sub(r'https?://\S+|www\.\S+', '', text)
     # Hapus mention
     text = re.sub(r'@[\w]*', ' ', text)
-
-    # Hapus tag HTML seperti <a href=...>
+    # Hapus HTML tag <a href=...>
     text = re.sub(r'<a\s+href.*?>', '', text, flags=re.IGNORECASE)
     text = re.sub(r'a\s+href', '', text, flags=re.IGNORECASE)
-
     # Hapus emoji
     text = emoji.replace_emoji(text, replace='')
-
     # Hapus tanda baca
-    punctuations = '''!()-[]{};:'"\,<>./?@#$%^+&*_~'''
-    for x in text.lower():
-        if x in punctuations:
-            text = text.replace(x, " ")
-
+    text = re.sub(r'[^\w\s]', ' ', text)
     # Bersihkan karakter khusus
-    text = text.replace('\\t', " ")
-    text = text.replace('\\n', " ")
-    text = text.replace('\\u', " ")
-    text = text.replace('\\', "")
-    text = text.replace('&quot;', "")
-    text = text.replace('quot', "")
-    text = text.replace('=', "")
-    
-    # Hapus pola seperti "(a)" atau "(A)"
-    text = re.sub(r'\(a\)', '', text, flags=re.IGNORECASE)
-
+    text = re.sub(r'(\\t|\\n|\\u|\\|&quot;|quot|=)', ' ', text)
     # Hapus angka
     text = re.sub(r"\d+", "", text)
-
     # Hapus spasi ekstra
     text = re.sub(r'\s+', ' ', text).strip()
-
     return text
 
-# Muat kamus slangword dari file CSV
-kamus_slang = pd.read_csv("kamus-slang.csv", header=None, names=['slang', 'formal'])
+# --- SLANG REMOVER ---
+kamus_slang = pd.read_csv("preprocessing/kamus-slang.csv", header=None, names=['slang', 'formal'])
 lookup_dict = dict(zip(kamus_slang['slang'], kamus_slang['formal']))
-# Mengganti kata slang dengan kata asli
+
 def slangremove(text, lookup_dict=lookup_dict):
     words = text.split()
     new_words = [lookup_dict.get(word, word) for word in words]
     return ' '.join(new_words)
 
-# Define stopwords
+# --- STOPWORDS ---
 sastrawi_stopword = "https://raw.githubusercontent.com/onlyphantom/elangdev/master/elang/word2vec/utils/stopwords-list/sastrawi-stopwords.txt"
 stopwords_l = stopwords.words('indonesian')
 response = requests.get(sastrawi_stopword)
 stopwords_l += response.text.split('\n')
 
-custom_st = '''
-yg yang dgn ane smpai bgt gua gwa si tu ama utk udh btw
-ntar lol ttg emg aj aja tll sy sih kalo nya trsa mnrt nih
-'''
+with open('preprocessing/stopwords.txt', 'r', encoding='utf-8') as f:
+    custom_st = f.read()
+
 st_words = set(stopwords_l)
 custom_stopword = set(custom_st.split())
 stop_words = st_words | custom_stopword
 
-def stopword(text):
+def remove_stopwords(text):
     word_tokens = text.split()
-    filtered_sentence = [w for w in word_tokens if not w in stop_words]
+    filtered_sentence = [w for w in word_tokens if w not in stop_words]
     return ' '.join(filtered_sentence)
 
-# Stemming
-factory = StemmerFactory()
-stemmer = factory.create_stemmer()
-
+# --- STEMMING ---
 @lru_cache(maxsize=None)
 def cached_stem(word):
     return stemmer.stem(word)
 
-def stemming(text_cleaning):
-    stemmed_words = [cached_stem(word) for word in text_cleaning]
-    d_clean = " ".join(stemmed_words)
-    return d_clean
+def stemming(word_list):
+    return [cached_stem(word) for word in word_list]
 
-# Main function to process the dataframe
+# --- MAIN PREPROCESSING FUNCTION ---
 def preproces(df, progress_callback=None):
     if progress_callback:
         progress_callback(10, "Melakukan case folding...")
@@ -109,21 +85,17 @@ def preproces(df, progress_callback=None):
     if progress_callback:
         progress_callback(25, "Membersihkan teks (cleaning)...")
     df['cleanedtext'] = df['casefolding'].apply(cleaning_text)
-
     df = df.drop_duplicates(subset='cleanedtext').reset_index(drop=True)
-
     df = df.dropna(subset=['cleanedtext'])
     df = df[df['cleanedtext'].str.strip() != ""]
 
     if progress_callback:
         progress_callback(40, "Menghapus kata tidak baku (slang removal)...")
-    df['slangremoved'] = df['cleanedtext'].apply(lambda x: slangremove(x, lookup_dict))
+    df['slangremoved'] = df['cleanedtext'].apply(slangremove)
 
     if progress_callback:
         progress_callback(60, "Menghapus stopword...")
-    df['stopwordremoved'] = df['slangremoved'].apply(stopword)
-
-    # Hapus kosong lagi
+    df['stopwordremoved'] = df['slangremoved'].apply(remove_stopwords)
     df = df.dropna(subset=['stopwordremoved'])
     df = df[df['stopwordremoved'].str.strip() != ""]
 
@@ -134,6 +106,9 @@ def preproces(df, progress_callback=None):
     if progress_callback:
         progress_callback(90, "Stemming...")
     df['stemming'] = df['tokenized'].apply(stemming)
+
+    # (Opsional) Gabungkan kembali hasil stemming menjadi string
+    df['stemming_str'] = df['stemming'].apply(lambda x: ' '.join(x))
 
     if progress_callback:
         progress_callback(100, "Preprocessing selesai!")
