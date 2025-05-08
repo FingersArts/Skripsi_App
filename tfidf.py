@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import ast
-from preprocessing import preproces
 
 # Define functions for TF-IDF calculation
 def convert_text_list(texts):
@@ -51,7 +50,7 @@ def calculate_tfidf(df):
     IDF = calc_IDF(n_document, DF)
     df["TF-IDF_dict"] = df["TF_dict"].apply(lambda tf: calc_TF_IDF(tf, IDF))
     
-    sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)[:50]
+    sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)
     unique_term = [item[0] for item in sorted_DF]
     
     df["TF_IDF_Vec"] = df["TF-IDF_dict"].apply(lambda tfidf: calc_TF_IDF_Vec(tfidf, unique_term))
