@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
-from preprocessing import preproces
+from preprocessing.preprocessing import preproces
 from tfidf import calculate_tfidf
-from labelling import apply_lexicon_labeling
+from labelling import apply_score_based_labeling
 from collections import defaultdict, Counter
 import math
 
@@ -15,8 +15,8 @@ st.title('ANALISIS SENTIMEN 100 HARI KERJA :orange[PRESIDEN PRABOWO SUBIANTO]')
 st.sidebar.markdown("## 📌 Navigasi")
 upload_btn = st.sidebar.button("📤 Upload Data")
 preprocess_btn = st.sidebar.button("🩹 Preprocessing")
-tfidf_btn = st.sidebar.button("🧮 TF-IDF")
 label_btn = st.sidebar.button("🏷️ Labeling")
+tfidf_btn = st.sidebar.button("🧮 TF-IDF")
 nb_btn = st.sidebar.button("🤖 Naive Bayes")
 
 # Set tab berdasarkan tombol yang diklik
@@ -24,10 +24,10 @@ if upload_btn:
     st.session_state['tab'] = "Upload Data"
 elif preprocess_btn:
     st.session_state['tab'] = "Preprocessing"
-elif tfidf_btn:
-    st.session_state['tab'] = "TF-IDF"
 elif label_btn:
     st.session_state['tab'] = "Labeling"
+elif tfidf_btn:
+    st.session_state['tab'] = "TF-IDF"
 elif nb_btn:
     st.session_state['tab'] = "Naive Bayes"
 
@@ -72,13 +72,28 @@ if st.session_state['tab'] == "Upload Data":
 
 # ========== Preprocessing ==========
 elif st.session_state['tab'] == "Preprocessing":
+    st.markdown("---")
+    st.subheader("Upload Hasil Preprocessing (Opsional)")
+
+    if st.button("📥 Ambil dari Database"):
+        with st.spinner("Mengambil data dari database..."):
+            from db import ambil_preprocessing
+            df_db, message = ambil_preprocessing()
+            if df_db is not None and not df_db.empty:
+                st.session_state['preprocessed_df'] = df_db
+                st.session_state['run_preprocessing'] = False
+                st.success(message)
+            else:
+                st.error(message)
+
     if 'df' not in st.session_state:
-        st.warning("Silakan upload file terlebih dahulu.")
+        st.warning("Silakan upload file data mentah di Tab Upload Data.")
+        
     else:
+        # Kalau belum upload hasil preprocessing, berikan opsi preprocessing dari awal
         if 'preprocessed_df' in st.session_state:
             if st.button('🔄 Ulangi Preprocessing'):
                 st.session_state.pop('preprocessed_df', None)
-                st.session_state.pop('tfidf_ranking', None)
                 st.session_state['run_preprocessing'] = True
 
         if 'preprocessed_df' not in st.session_state:
@@ -95,9 +110,9 @@ elif st.session_state['tab'] == "Preprocessing":
                 status_text.text(message)
 
             with st.spinner('Sedang melakukan preprocessing...'):
-                start_time = time.time()  # waktu mulai
+                start_time = time.time()
                 preprocessed_df = preproces(st.session_state['df'], progress_callback=update_progress)
-                end_time = time.time()  # waktu selesai
+                end_time = time.time()
 
                 processing_time = end_time - start_time
                 minutes, seconds = divmod(processing_time, 60)
@@ -105,69 +120,62 @@ elif st.session_state['tab'] == "Preprocessing":
                 st.session_state['run_preprocessing'] = False
                 st.success(f"Preprocessing selesai dalam {int(minutes)} menit {int(seconds)} detik!")
 
+    # Tampilkan hasil preprocessing, baik yang di-upload atau dari proses
+    if 'preprocessed_df' in st.session_state:
+        st.subheader('Data Setelah Preprocessing')
+        st.write(st.session_state['preprocessed_df'][['full_text', 'casefolding', 'cleanedtext', 'slangremoved', 'stopwordremoved', 'tokenized', 'stemming', 'stemming_str']])
 
-        if 'preprocessed_df' in st.session_state:
-            st.subheader('Data Setelah Preprocessing')
-            st.write(st.session_state['preprocessed_df'][['full_text', 'casefolding', 'cleanedtext', 'slangremoved', 'stopwordremoved', 'tokenized', 'stemming']])
+        word_counts = st.session_state['preprocessed_df']['stemming_str'].str.split(expand=True).stack().value_counts()
+        st.subheader('Visualisasi 10 Kata Teratas')
+        st.bar_chart(word_counts.head(10))
+        st.subheader('10 Kata Teratas')
+        st.write(word_counts.head(10))
+        st.write(word_counts)
 
-            word_counts = st.session_state['preprocessed_df']['stemming'].str.split(expand=True).stack().value_counts()
-            st.subheader('Visualisasi 10 Kata Teratas')
-            st.bar_chart(word_counts.head(10))
-            st.subheader('10 Kata Teratas')
-            st.write(word_counts.head(10))
+        # Tombol Download CSV
+        csv = st.session_state['preprocessed_df'].to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Download Hasil Preprocessing (CSV)",
+            data=csv,
+            file_name='hasil_preprocessing.csv',
+            mime='text/csv'
+        )
 
-            # Tombol Download CSV
-            csv = st.session_state['preprocessed_df'].to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="⬇️ Download Hasil Preprocessing sebagai CSV",
-                data=csv,
-                file_name='hasil_preprocessing.csv',
-                mime='text/csv'
-            )  
-
-# ========== TF-IDF ==========
-elif st.session_state['tab'] == "TF-IDF":
-    if 'preprocessed_df' not in st.session_state:
-        st.warning("Silakan lakukan preprocessing terlebih dahulu.")
-    else:
-        if 'tfidf_ranking' in st.session_state:
-            if st.button('🔄 Ulangi TF-IDF'):
-                st.session_state.pop('tfidf_ranking', None)
-                st.session_state['run_tfidf'] = True
-
-        if 'tfidf_ranking' not in st.session_state:
-            if st.button("Hitung TF-IDF"):
-                st.session_state['run_tfidf'] = True
-
-        if st.session_state.get('run_tfidf', False):
-            with st.spinner("Sedang menghitung TF-IDF..."):
-                ranking = calculate_tfidf(st.session_state['preprocessed_df'])
-                st.session_state['tfidf_ranking'] = ranking
-                st.session_state['run_tfidf'] = False
-                st.success("TF-IDF berhasil dihitung!")
-
-        if 'tfidf_ranking' in st.session_state:
-            st.subheader("Hasil TF-IDF (Top Terms)")
-            st.dataframe(st.session_state['tfidf_ranking'].reset_index(drop=True))
-
-            st.subheader("Visualisasi TF-IDF 10 Teratas")
-            top_terms = st.session_state['tfidf_ranking'].head(10).set_index('term')
-            st.bar_chart(top_terms)
+        # Tambahkan tombol update ke MySQL
+        if st.button("🔄 Update ke MySQL"):
+            with st.spinner("Memperbarui database..."):
+                from db import update_preprocessing
+                success, message = update_preprocessing(st.session_state['preprocessed_df'])
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)   
 
 # ========== Labeling ==========
 elif st.session_state['tab'] == "Labeling":
     st.subheader("Labeling")
 
+    # Tombol untuk mengambil data dari database
+    if st.button("📥 Ambil Data dari Database"):
+        from db import ambil_labeling
+        df, pesan = ambil_labeling()
+        if df is not None:
+            st.session_state['labeled_df'] = df
+            st.success(pesan)
+        else:
+            st.error(pesan)
+
     if 'preprocessed_df' not in st.session_state:
         st.warning("Silakan lakukan preprocessing terlebih dahulu.")
+        
     else:
         df = st.session_state['preprocessed_df']
 
         # Labeling otomatis
         if st.button("💡 Jalankan Labeling Otomatis"):
             try:
-                from labelling import apply_lexicon_labeling
-                labeled_df = apply_lexicon_labeling(df)
+                from labelling import apply_score_based_labeling
+                labeled_df = apply_score_based_labeling(df)
                 st.session_state['preprocessed_df'] = labeled_df
                 st.success("Labeling otomatis selesai!")
             except Exception as e:
@@ -176,7 +184,7 @@ elif st.session_state['tab'] == "Labeling":
         if 'sentiment' in df.columns:
             st.subheader("✏️ Edit Sentimen")
 
-            # Tampilkan editor, hanya kolom 'sentiment' yang bisa diedit
+            # Editor interaktif: hanya kolom 'sentiment' yang bisa diedit
             edited_df = st.data_editor(
                 df[['full_text', 'stemming', 'sentiment']],
                 column_config={
@@ -190,78 +198,73 @@ elif st.session_state['tab'] == "Labeling":
                 num_rows="dynamic"
             )
 
-            # Simpan hasil edit
-            if st.button("💾 Simpan Perubahan"):
+            # Simpan ke database
+            if st.button("🗃️ Simpan ke Database"):
                 st.session_state['preprocessed_df']['sentiment'] = edited_df['sentiment']
-                st.success("Perubahan sentimen berhasil disimpan!")
+                from db import simpan_labeling
+                berhasil, pesan = simpan_labeling(st.session_state['preprocessed_df'])
+                if berhasil:
+                    st.success(pesan)
+                else:
+                    st.error(pesan)
 
-            # Tombol Download CSV
+            # Tampilkan distribusi sentimen
+            st.subheader("📊 Distribusi Sentimen")
+            sentiment_counts = edited_df['sentiment'].value_counts()
+            st.write(sentiment_counts)
+
+            # Download data ke CSV
             csv = st.session_state['preprocessed_df'].to_csv(index=False).encode('utf-8')
             st.download_button(
-                "⬇️ Download Data dengan Label Final",
+                "⬇️ Download Hasil Labelling (CSV)",
                 data=csv,
                 file_name="hasil_label_final.csv",
                 mime="text/csv"
             )
 
+# ========== TF-IDF ==========
+elif st.session_state['tab'] == "TF-IDF":
+    st.subheader("TF-IDF")
+
+    if 'preprocessed_df' not in st.session_state:
+        st.warning("Silakan lakukan preprocessing terlebih dahulu.")
+    else:
+        # Pastikan kolom tokenized dalam bentuk list
+        df = st.session_state['preprocessed_df'].copy()
+
+        if 'tfidf_ranking' in st.session_state:
+            if st.button('🔄 Ulangi TF-IDF'):
+                st.session_state.pop('tfidf_ranking', None)
+                st.session_state['run_tfidf'] = True
+
+        if 'tfidf_ranking' not in st.session_state:
+            if st.button("Hitung TF-IDF"):
+                st.session_state['run_tfidf'] = True
+
+        if st.session_state.get('run_tfidf', False):
+            with st.spinner("Sedang menghitung TF-IDF..."):
+                ranking = calculate_tfidf(df)
+                st.session_state['tfidf_ranking'] = ranking
+                st.session_state['run_tfidf'] = False
+                st.success("TF-IDF berhasil dihitung!")
+
+        if 'tfidf_ranking' in st.session_state:
+            st.subheader("Hasil TF-IDF (Top Terms)")
+            st.dataframe(st.session_state['tfidf_ranking'].reset_index(drop=True))
+
+            st.subheader("Visualisasi TF-IDF 10 Teratas")
+            top_terms = st.session_state['tfidf_ranking'].head(10).set_index('term')
+            st.bar_chart(top_terms)
 
 # ========== Naive Bayes ==========
 elif st.session_state['tab'] == "Naive Bayes":
     st.subheader("Klasifikasi Sentimen dengan Naive Bayes (Manual Tanpa Library)")
 
-    if 'preprocessed_df' not in st.session_state:
+    if 'labeled_df' not in st.session_state:
         st.warning("Silakan lakukan labeling terlebih dahulu.")
     else:
-        df = st.session_state['preprocessed_df']
+        df = st.session_state['labeled_df']
 
         if 'sentiment' not in df.columns:
             st.error("Data belum memiliki kolom 'sentiment'. Lakukan labeling terlebih dahulu.")
-        else:
-             # Split manual: 80% train, 20% test
-            data = list(zip(df['stemming'], df['sentiment']))
-            np.random.shuffle(data)
-            split_index = int(0.8 * len(data))
-            train_data = data[:split_index]
-            test_data = data[split_index:]
-
-            X_train, y_train = zip(*train_data)
-            X_test, y_test = zip(*test_data)
-
-            def train_naive_bayes(docs, labels):
-                class_word_counts = defaultdict(Counter)
-                class_doc_counts = Counter(labels)
-                vocabulary = set()
-                total_docs = len(labels)
-
-                for text, label in zip(docs, labels):
-                    words = text.split()
-                    vocabulary.update(words)
-                    class_word_counts[label].update(words)
-
-                class_probs = {label: count / total_docs for label, count in class_doc_counts.items()}
-                word_probs = {
-                    label: {
-                        word: (class_word_counts[label][word] + 1) / (sum(class_word_counts[label].values()) + len(vocabulary))
-                        for word in vocabulary
-                    }
-                    for label in class_word_counts
-                }
-
-                return class_probs, word_probs, vocabulary
-
-            def predict(text, class_probs, word_probs, vocabulary):
-                words = text.split()
-                scores = {}
-                for label in class_probs:
-                    score = math.log(class_probs[label])
-                    for word in words:
-                        if word in vocabulary:
-                            score += math.log(word_probs[label].get(word, 1 / (sum(word_probs[label].values()) + len(vocabulary))) )
-                    scores[label] = score
-                return max(scores, key=scores.get)
-
-            class_probs, word_probs, vocabulary = train_naive_bayes(X_train, y_train)
-            predictions = [predict(text, class_probs, word_probs, vocabulary) for text in X_test]
-
-            result_df = pd.DataFrame({'Teks': X_test, 'Label Asli': y_test, 'Prediksi': predictions})
-            st.dataframe(result_df)
+        
