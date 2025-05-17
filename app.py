@@ -5,8 +5,9 @@ import time
 from preprocessing.preprocessing import preproces
 from tfidf import calculate_tfidf
 from labelling import apply_score_based_labeling
-from collections import defaultdict, Counter
-import math
+from naivebayes import train_naive_bayes, predict, evaluate_model, stratified_split, plot_confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
 st.title('ANALISIS SENTIMEN 100 HARI KERJA :orange[PRESIDEN PRABOWO SUBIANTO]')
@@ -72,8 +73,40 @@ if st.session_state['tab'] == "Upload Data":
 
 # ========== Preprocessing ==========
 elif st.session_state['tab'] == "Preprocessing":
+
+    from preprocessing.stopwords import tambah_stopwords  # atau nama file kamu
+    st.header("Tambah Stopwords")
+
+    input_kata = st.text_area("Masukkan kata-kata stopwords, pisahkan dengan koma (,) atau baris baru:")
+
+    if st.button("Tambahkan ke Database"):
+        # Normalisasi input
+        kata_list = [k.strip() for k in input_kata.replace(",", "\n").splitlines() if k.strip()]
+        if kata_list:
+            hasil = tambah_stopwords(kata_list)
+            st.success(hasil)
+        else:
+            st.warning("Masukkan minimal satu kata.")
+    
+    from preprocessing.kamus_slang import tambah_slangword
+    st.header("Tambah Entri Kamus Slang")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        slang = st.text_input("Kata slang (contoh: 'gk')")
+
+    with col2:
+        formal = st.text_input("Versi formal (contoh: 'tidak')")
+
+    if st.button("Tambahkan ke Kamus"):
+        if slang.strip() and formal.strip():
+            hasil = tambah_slangword(slang.strip(), formal.strip())
+            st.success(hasil)
+        else:
+            st.warning("Kedua kolom harus diisi.")
+
     st.markdown("---")
-    st.subheader("Upload Hasil Preprocessing (Opsional)")
+    st.subheader("Hasil Preprocessing")
 
     if st.button("📥 Ambil dari Database"):
         with st.spinner("Mengambil data dari database..."):
@@ -178,6 +211,7 @@ elif st.session_state['tab'] == "Labeling":
                 labeled_df = apply_score_based_labeling(df)
                 st.session_state['preprocessed_df'] = labeled_df
                 st.success("Labeling otomatis selesai!")
+                st.session_state['labeled_df'] = labeled_df
             except Exception as e:
                 st.error(str(e))
 
@@ -203,6 +237,7 @@ elif st.session_state['tab'] == "Labeling":
                 st.session_state['preprocessed_df']['sentiment'] = edited_df['sentiment']
                 from db import simpan_labeling
                 berhasil, pesan = simpan_labeling(st.session_state['preprocessed_df'])
+                st.session_state['labeled_df'] = st.session_state['preprocessed_df']
                 if berhasil:
                     st.success(pesan)
                 else:
@@ -226,11 +261,16 @@ elif st.session_state['tab'] == "Labeling":
 elif st.session_state['tab'] == "TF-IDF":
     st.subheader("TF-IDF")
 
-    if 'preprocessed_df' not in st.session_state:
-        st.warning("Silakan lakukan preprocessing terlebih dahulu.")
+    if 'labeled_df' not in st.session_state:
+        st.warning("Silakan lakukan labeling terlebih dahulu.")
     else:
-        # Pastikan kolom tokenized dalam bentuk list
-        df = st.session_state['preprocessed_df'].copy()
+        df = st.session_state['labeled_df'].copy()
+
+        if 'tokenized' not in df.columns:
+            st.error("Kolom 'tokenized' tidak ditemukan. Pastikan preprocessing sudah dilakukan.")
+        elif 'sentiment' not in df.columns:
+            st.error("Kolom 'sentiment' tidak ditemukan. Pastikan data sudah dilabel.")
+
 
         if 'tfidf_ranking' in st.session_state:
             if st.button('🔄 Ulangi TF-IDF'):
@@ -244,6 +284,7 @@ elif st.session_state['tab'] == "TF-IDF":
         if st.session_state.get('run_tfidf', False):
             with st.spinner("Sedang menghitung TF-IDF..."):
                 ranking = calculate_tfidf(df)
+                st.session_state['labeled_df'] = df  # update hasil TF-IDF ke dalam session
                 st.session_state['tfidf_ranking'] = ranking
                 st.session_state['run_tfidf'] = False
                 st.success("TF-IDF berhasil dihitung!")
@@ -258,13 +299,82 @@ elif st.session_state['tab'] == "TF-IDF":
 
 # ========== Naive Bayes ==========
 elif st.session_state['tab'] == "Naive Bayes":
-    st.subheader("Klasifikasi Sentimen dengan Naive Bayes (Manual Tanpa Library)")
+    st.subheader("🤖 Naive Bayes Classification")
 
     if 'labeled_df' not in st.session_state:
         st.warning("Silakan lakukan labeling terlebih dahulu.")
     else:
         df = st.session_state['labeled_df']
 
-        if 'sentiment' not in df.columns:
-            st.error("Data belum memiliki kolom 'sentiment'. Lakukan labeling terlebih dahulu.")
-        
+        # Pastikan TF-IDF sudah tersedia
+        if 'TF-IDF_dict' not in df.columns or df['TF-IDF_dict'].isnull().all():
+            st.error("Kolom 'TF-IDF_dict' tidak ditemukan atau kosong. Pastikan TF-IDF sudah dihitung.")
+        else:
+            # Split data
+            train_df, test_df = stratified_split(df, label_col='sentiment', test_ratio=0.2)
+            st.info(f"Jumlah Data Latih: {len(train_df)} | Jumlah Data Uji: {len(test_df)}")
+
+            # Training & prediction
+            model = train_naive_bayes(train_df['TF_dict'], train_df['sentiment'], alpha=0.01)
+
+            try:
+                y_true = test_df['sentiment'].tolist()
+                y_pred = [predict(tfidf, model) for tfidf in test_df['TF-IDF_dict']]
+            except Exception as e:
+                st.error(f"Terjadi kesalahan saat prediksi: {e}")
+                st.stop()
+
+            report, conf_matrix, accuracy = evaluate_model(y_true, y_pred)
+
+            st.markdown("## 🎯 Performa Model")
+            st.metric("🎯 Akurasi Total", f"{accuracy:.4f}")
+
+            labels = list(report.keys())
+            if 'accuracy' in labels:
+                labels.remove('accuracy')
+            if 'macro avg' in labels:
+                labels.remove('macro avg')
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.markdown("### Recall per Kelas:")
+                for label in labels:
+                    st.write(f"{label.capitalize()}: {report[label]['recall']:.4f}")
+
+            with col2:
+                st.markdown("### Precision per Kelas:")
+                for label in labels:
+                    st.write(f"{label.capitalize()}: {report[label]['precision']:.4f}")
+
+            with col3:
+                st.markdown("### F1-Score per Kelas:")
+                for label in labels:
+                    st.write(f"{label.capitalize()}: {report[label]['f1-score']:.4f}")
+
+            if 'macro avg' in report:
+                st.markdown("### 📌 Macro Average")
+                st.write(f"Precision: {report['macro avg']['precision']:.4f}")
+                st.write(f"Recall: {report['macro avg']['recall']:.4f}")
+                st.write(f"F1-Score: {report['macro avg']['f1-score']:.4f}")
+
+            # Confusion Matrix
+            st.markdown("### 📊 Confusion Matrix")
+            conf_df = pd.DataFrame(
+                conf_matrix,
+                index=[f"True {l.capitalize()}" for l in labels],
+                columns=[f"Pred {l.capitalize()}" for l in labels]
+            )
+            st.dataframe(conf_df, use_container_width=True)
+
+            # Heatmap
+            st.markdown("### 🔥 Visualisasi Confusion Matrix")
+            fig = plot_confusion_matrix(conf_matrix, labels)
+            st.pyplot(fig)
+
+            # Hasil prediksi
+            st.markdown("### 🔍 Contoh Prediksi")
+            test_df = test_df.copy()
+            test_df['Prediksi'] = y_pred
+            test_df['Benar/Salah'] = test_df['sentiment'] == test_df['Prediksi']
+            st.dataframe(test_df[['full_text', 'sentiment', 'Prediksi']].head(10))
