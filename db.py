@@ -86,48 +86,40 @@ def update_preprocessing(df, table_name="preprocessing_result"):
         return False, f"Gagal menyimpan ke MySQL: {e}"
 
 
-def simpan_labeling(df, table_name="labelling"):
+def simpan_labeling(df, table_name="preprocessing_result"):
     try:
         conn = connect_to_db()
         cursor = conn.cursor()
 
-        # Buat tabel labelling jika belum ada
+        # Tambahkan kolom sentiment jika belum ada
         cursor.execute(f'''
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                full_text TEXT UNIQUE,
-                stemming TEXT,
-                sentiment VARCHAR(10)
-            )
+            ALTER TABLE {table_name}
+            ADD COLUMN IF NOT EXISTS sentiment VARCHAR(10)
         ''')
 
-        for _, row in df.iterrows():
-            stemming_str = str(row['stemming']) if isinstance(row['stemming'], list) else row['stemming']
-            sentiment = row['sentiment']
+        # Siapkan data (list of tuples): (sentiment, full_text)
+        data = [(row['sentiment'], row['full_text']) for _, row in df.iterrows()]
 
-            cursor.execute(f'''
-                INSERT INTO {table_name} (full_text, stemming, sentiment)
-                VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    stemming = VALUES(stemming),
-                    sentiment = VALUES(sentiment)
-            ''', (
-                row['full_text'],
-                stemming_str,
-                sentiment
-            ))
+        # Gunakan executemany untuk update batch
+        query = f'''
+            UPDATE {table_name}
+            SET sentiment = %s
+            WHERE full_text = %s
+        '''
+        cursor.executemany(query, data)
 
         conn.commit()
         cursor.close()
         conn.close()
-        return True, f"{len(df)} data berhasil disimpan atau diperbarui ke tabel `{table_name}`!"
+        return True, f"{len(data)} data berhasil diperbarui kolom `sentiment` di tabel `{table_name}`!"
     except Error as e:
         return False, f"Gagal menyimpan data ke MySQL: {e}"
 
-def ambil_labeling(table_name="labelling"):
+
+def ambil_labeling(table_name="preprocessing_result"):
     try:
         conn = connect_to_db()
-        query = f"SELECT full_text, stemming, sentiment FROM {table_name}"
+        query = f"SELECT * FROM {table_name}"
         df = pd.read_sql(query, conn)
 
         # Parsing stemming dari string ke list (jika perlu)
