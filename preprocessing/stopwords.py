@@ -1,25 +1,49 @@
 import mysql.connector
-
-# Baca file stopwords.txt
-with open('stopwords.txt', 'r', encoding='utf-8') as f:
-    stopwords = [line.strip() for line in f if line.strip()]
+from mysql.connector import Error
+import pandas as pd
 
 # Koneksi ke database MySQL
-conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="",
-    database="skripsi"
-)
-cursor = conn.cursor()
+def connect_to_db():
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="",
+        database="skripsi"
+    )
 
-# Masukkan setiap kata ke tabel
-for word in stopwords:
-    cursor.execute("INSERT INTO stopwords (word) VALUES (%s)", (word,))
+def ambil_stopwords(table_name="stopwords"):
+    conn = connect_to_db()
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT word FROM {table_name}")
+    result = cursor.fetchall()
+    stopwords = [row[0] for row in result]
+    cursor.close()
+    conn.close()
+    return stopwords
 
-# Simpan perubahan dan tutup koneksi
-conn.commit()
-cursor.close()
-conn.close()
+def tambah_stopwords(kata_list, table_name="stopwords"):
+    try:
+        conn = connect_to_db()
+        cursor = conn.cursor()
 
-print(f"{len(stopwords)} stopwords berhasil dimasukkan ke database.")
+        # Ambil semua kata yang sudah ada
+        cursor.execute(f"SELECT word FROM {table_name}")
+        existing = set(row[0] for row in cursor.fetchall())
+
+        # Filter kata yang belum ada
+        new_words = [kata for kata in kata_list if kata not in existing]
+
+        if new_words:
+            query = f"INSERT INTO {table_name} (word) VALUES (%s)"
+            cursor.executemany(query, [(word,) for word in new_words])
+            conn.commit()
+            return f"{len(new_words)} kata berhasil ditambahkan."
+        else:
+            return "Semua kata sudah ada di database."
+    except Error as e:
+        return f"Gagal menambahkan kata: {e}"
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

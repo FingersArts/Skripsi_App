@@ -7,11 +7,11 @@ from nltk.tokenize import word_tokenize
 from functools import lru_cache
 import requests
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory, StopWordRemover, ArrayDictionary
 import emoji
+from collections import Counter
 
 # Download resource NLTK
-nltk.download(['stopwords', 'punkt'])
+nltk.download(['stopwords', 'punkt_tab'])
 
 # Inisialisasi Stemmer
 factory = StemmerFactory()
@@ -42,8 +42,8 @@ def cleaning_text(text):
     return text
 
 # --- SLANG REMOVER ---
-kamus_slang = pd.read_csv("preprocessing/kamus-slang.csv", header=None, names=['slang', 'formal'])
-lookup_dict = dict(zip(kamus_slang['slang'], kamus_slang['formal']))
+from preprocessing.kamus_slang import ambil_slangwords
+lookup_dict = ambil_slangwords()
 
 def slangremove(text, lookup_dict=lookup_dict):
     words = text.split()
@@ -51,16 +51,13 @@ def slangremove(text, lookup_dict=lookup_dict):
     return ' '.join(new_words)
 
 # --- STOPWORDS ---
-sastrawi_stopword = "https://raw.githubusercontent.com/onlyphantom/elangdev/master/elang/word2vec/utils/stopwords-list/sastrawi-stopwords.txt"
-stopwords_l = stopwords.words('indonesian')
-response = requests.get(sastrawi_stopword)
-stopwords_l += response.text.split('\n')
+stopwords_l = set(stopwords.words('indonesian'))
 
-with open('preprocessing/stopwords.txt', 'r', encoding='utf-8') as f:
-    custom_st = f.read()
+from preprocessing.stopwords import ambil_stopwords
+custom_st = ambil_stopwords()
 
 st_words = set(stopwords_l)
-custom_stopword = set(custom_st.split())
+custom_stopword = set(custom_st)
 stop_words = st_words | custom_stopword
 
 def remove_stopwords(text):
@@ -76,8 +73,32 @@ def cached_stem(word):
 def stemming(word_list):
     return [cached_stem(word) for word in word_list]
 
+def tokenize(text):
+    return word_tokenize(text)
+
+# --- FILTERING RARE WORDS --- 
+def filter_rare_words(df, min_freq=3):
+    """
+    Filter kata-kata yang jarang muncul berdasarkan frekuensi.
+    """
+    # Hitung frekuensi kata di seluruh korpus
+    all_tokens = [word for tokens in df['tokenized'] for word in tokens]
+    word_counts = Counter(all_tokens)
+
+    # Filter kata-kata yang muncul lebih jarang dari min_freq
+    rare_words = {word for word, count in word_counts.items() if count < min_freq}
+
+    # Fungsi untuk menghapus kata-kata yang sangat jarang muncul
+    def remove_rare_words(tokens):
+        return [word for word in tokens if word not in rare_words]
+
+    # Terapkan filter pada kolom 'tokenized' setelah tokenisasi
+    df['filtered_tokens'] = df['tokenized'].apply(remove_rare_words)
+    
+    return df
+
 # --- MAIN PREPROCESSING FUNCTION ---
-def preproces(df, progress_callback=None):
+def preproces(df, progress_callback=None, min_freq=3):
     if progress_callback:
         progress_callback(10, "Melakukan case folding...")
     df['casefolding'] = df['full_text'].str.lower()
@@ -100,12 +121,16 @@ def preproces(df, progress_callback=None):
     df = df[df['stopwordremoved'].str.strip() != ""]
 
     if progress_callback:
-        progress_callback(75, "Tokenisasi...")
-    df['tokenized'] = df['stopwordremoved'].apply(lambda x: x.split())
+        progress_callback(70, "Tokenisasi...")
+    df['tokenized'] = df['stopwordremoved'].apply(tokenize)
+
+    if progress_callback:
+        progress_callback(75, "Menghapus kata langka...")
+    df = filter_rare_words(df, min_freq)
 
     if progress_callback:
         progress_callback(90, "Stemming...")
-    df['stemming'] = df['tokenized'].apply(stemming)
+    df['stemming'] = df['filtered_tokens'].apply(stemming)
 
     # (Opsional) Gabungkan kembali hasil stemming menjadi string
     df['stemming_str'] = df['stemming'].apply(lambda x: ' '.join(x))
