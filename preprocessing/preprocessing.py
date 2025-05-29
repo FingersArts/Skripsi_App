@@ -5,17 +5,12 @@ import numpy as np
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from functools import lru_cache
-import requests
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 import emoji
 from collections import Counter
 
 # Download resource NLTK
 nltk.download(['stopwords', 'punkt_tab'])
-
-# Inisialisasi Stemmer
-factory = StemmerFactory()
-stemmer = factory.create_stemmer()
 
 # --- CLEANING FUNCTION ---
 def cleaning_text(text):
@@ -66,6 +61,11 @@ def remove_stopwords(text):
     return ' '.join(filtered_sentence)
 
 # --- STEMMING ---
+# Inisialisasi Stemmer
+factory = StemmerFactory()
+stemmer = factory.create_stemmer()
+
+# Fungsi untuk melakukan stemming
 @lru_cache(maxsize=None)
 def cached_stem(word):
     return stemmer.stem(word)
