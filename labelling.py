@@ -1,10 +1,6 @@
 import pandas as pd
 
 def load_scored_lexicon():
-    """
-    Load lexicon positif dan negatif dari GitHub lalu gabungkan menjadi satu dictionary: {word: score}.
-    Menangani kesalahan jika ada nilai non-numeric di kolom score.
-    """
     url_positive = "https://raw.githubusercontent.com/fajri91/InSet/master/positive.tsv"
     url_negative = "https://raw.githubusercontent.com/fajri91/InSet/master/negative.tsv"
 
