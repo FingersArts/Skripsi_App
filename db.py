@@ -40,7 +40,7 @@ def update_preprocessing(df, table_name="preprocessing_result"):
         cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS {table_name} (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                full_text TEXT UNIQUE,
+                full_text TEXT,
                 casefolding TEXT,
                 cleanedtext TEXT,
                 slangremoved TEXT,
@@ -91,29 +91,40 @@ def simpan_labeling(df, table_name="preprocessing_result"):
         conn = connect_to_db()
         cursor = conn.cursor()
 
-        # Tambahkan kolom sentiment jika belum ada
-        cursor.execute(f'''
-            ALTER TABLE {table_name}
-            ADD COLUMN IF NOT EXISTS sentiment VARCHAR(10)
-        ''')
+        # Periksa apakah kolom 'sentiment' sudah ada (tetap diperlukan)
+        cursor.execute(f"""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = '{conn.database}' 
+            AND TABLE_NAME = '{table_name}' 
+            AND COLUMN_NAME = 'sentiment'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN sentiment VARCHAR(10)")
 
-        # Siapkan data (list of tuples): (sentiment, full_text)
-        data = [(row['sentiment'], row['full_text']) for _, row in df.iterrows()]
+        # Siapkan data (list of tuples): (sentiment, id)
+        # INI BAGIAN YANG DIUBAH: Gunakan 'id' bukan 'full_text'
+        data_to_update = [(row['sentiment'], row['full_text']) for _, row in df.iterrows()]
 
-        # Gunakan executemany untuk update batch
+        # Gunakan executemany untuk update batch yang jauh lebih cepat
         query = f'''
             UPDATE {table_name}
             SET sentiment = %s
-            WHERE full_text = %s
+            WHERE full_text = %s 
         '''
-        cursor.executemany(query, data)
+        cursor.executemany(query, data_to_update)
 
         conn.commit()
+        
+        updated_rows = cursor.rowcount
+        
         cursor.close()
         conn.close()
-        return True, f"{len(data)} data berhasil diperbarui kolom `sentiment` di tabel `{table_name}`!"
+        return True, f"{updated_rows} data berhasil diperbarui kolom `sentiment` di tabel `{table_name}`!"
     except Error as e:
         return False, f"Gagal menyimpan data ke MySQL: {e}"
+    except KeyError:
+        return False, "Gagal menyimpan data: Pastikan DataFrame Anda memiliki kolom 'id' dan 'sentiment'."
 
 
 def ambil_labeling(table_name="preprocessing_result"):
