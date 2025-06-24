@@ -76,27 +76,6 @@ def stemming(word_list):
 def tokenize(text):
     return word_tokenize(text)
 
-# --- FILTERING RARE WORDS --- 
-def filter_rare_words(df, min_freq=3):
-    """
-    Filter kata-kata yang jarang muncul berdasarkan frekuensi.
-    """
-    # Hitung frekuensi kata di seluruh korpus
-    all_tokens = [word for tokens in df['tokenized'] for word in tokens]
-    word_counts = Counter(all_tokens)
-
-    # Filter kata-kata yang muncul lebih jarang dari min_freq
-    rare_words = {word for word, count in word_counts.items() if count < min_freq}
-
-    # Fungsi untuk menghapus kata-kata yang sangat jarang muncul
-    def remove_rare_words(tokens):
-        return [word for word in tokens if word not in rare_words]
-
-    # Terapkan filter pada kolom 'tokenized' setelah tokenisasi
-    df['filtered_tokens'] = df['tokenized'].apply(remove_rare_words)
-    
-    return df
-
 # --- MAIN PREPROCESSING FUNCTION ---
 def preproces(df, progress_callback=None, min_freq=3):
     if progress_callback:
@@ -125,12 +104,8 @@ def preproces(df, progress_callback=None, min_freq=3):
     df['tokenized'] = df['stopwordremoved'].apply(tokenize)
 
     if progress_callback:
-        progress_callback(75, "Menghapus kata langka...")
-    df = filter_rare_words(df, min_freq)
-
-    if progress_callback:
         progress_callback(90, "Stemming...")
-    df['stemming'] = df['filtered_tokens'].apply(stemming)
+    df['stemming'] = df['tokenized'].apply(stemming)
 
     # (Opsional) Gabungkan kembali hasil stemming menjadi string
     df['stemming_str'] = df['stemming'].apply(lambda x: ' '.join(x))
