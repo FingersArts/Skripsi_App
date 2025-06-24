@@ -100,33 +100,6 @@ class NaiveBayes:
         # Prediksi kelas untuk sampel
         probs = self.predict_proba(X)
         return self.classes[np.argmax(probs, axis=1)]
-    
-    def score(self, X: List[List[float]], y: List[Union[int, str]]) -> float:
-        
-        # Menghitung akurasi model
-        y_pred = self.predict(X)
-        y_true = np.array(y)
-        return np.mean(y_pred == y_true)
-    
-    def get_top_features(self, class_label: Union[int, str], n: int = 10) -> List[Tuple[str, float]]:
-        
-        # Mendapatkan n fitur teratas untuk kelas tertentu
-        if self.selected_terms is None:
-            raise ValueError("Tidak ada selected_terms yang tersedia")
-        
-        if class_label not in self.classes:
-            raise ValueError(f"Kelas {class_label} tidak ditemukan")
-        
-        # Dapatkan indeks fitur terurut berdasarkan probabilitas tertinggi
-        top_indices = np.argsort(self.feature_probs[class_label])[::-1][:n]
-        
-        # Konversi selected_terms dari dict ke list agar dapat diindeks
-        terms_list = list(self.selected_terms.keys())
-        
-        # Buat list hasil berupa (term, probability)
-        result = [(terms_list[idx], self.feature_probs[class_label][idx]) for idx in top_indices]
-        
-        return result
 
 
 def prepare_naive_bayes_model(X_train, y_train, selected_terms=None, alpha=1.0):
