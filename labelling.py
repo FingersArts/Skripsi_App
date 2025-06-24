@@ -1,8 +1,8 @@
 import pandas as pd
 
 def load_scored_lexicon():
-    url_positive = "https://raw.githubusercontent.com/fajri91/InSet/master/positive.tsv"
-    url_negative = "https://raw.githubusercontent.com/fajri91/InSet/master/negative.tsv"
+    url_positive = "positive.tsv"
+    url_negative = "negative.tsv"
 
     try:
         pos_df = pd.read_csv(url_positive, sep="\t", header=None, names=["word", "score"])
@@ -22,7 +22,7 @@ def load_scored_lexicon():
 
         return lexicon_dict
     except Exception as e:
-        raise IOError(f"Gagal memuat lexicon dari GitHub: {e}")
+        raise IOError(f"Gagal memuat lexicon: {e}")
 
 
 def label_by_total_score(text_tokens, lexicon_dict):
