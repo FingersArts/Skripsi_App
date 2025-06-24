@@ -5,7 +5,7 @@ import time
 from preprocessing.preprocessing import preproces
 from tfidf import calculate_tfidf
 from labelling import apply_score_based_labeling
-from naivebayes import evaluate_model, plot_confusion_matrix_streamlit, prepare_naive_bayes_model, stratified_split
+from naivebayes import evaluate_model, k_fold_cross_validation_nb, plot_confusion_matrix_streamlit, prepare_naive_bayes_model, stratified_split
 from mlr import LogisticRegression, plot_confusion_matrix, k_fold_cross_validation
 import matplotlib.pyplot as plt
 
@@ -140,24 +140,24 @@ elif st.session_state['tab'] == "Preprocessing":
             st.subheader('Kata Teratas')
             st.write(word_counts)
 
-            # Tombol Download CSV
+            left, right = st.columns(2)
             csv = st.session_state['preprocessed_df'].to_csv(index=False).encode('utf-8')
-            st.download_button(
+            if left.download_button( use_container_width=True,
                 label="⬇️ Download Hasil Preprocessing (CSV)",
                 data=csv,
                 file_name='hasil_preprocessing.csv',
                 mime='text/csv'
-            )
+            ):
+                left.markdown("You clicked the plain button.")
 
-            # Tambahkan tombol update ke Database
-            if st.button("🔄 Update ke Database"):
+            if right.button("🔄 Update ke Database", use_container_width=True):
                 with st.spinner("Memperbarui database..."):
                     from db import update_preprocessing
                     success, message = update_preprocessing(st.session_state['preprocessed_df'])
                     if success:
                         st.success(message)
                     else:
-                        st.error(message)   
+                        st.error(message)
 
     with tab2:
         from preprocessing.stopwords import tambah_stopwords  # atau nama file kamu
@@ -340,7 +340,6 @@ elif st.session_state['tab'] == "TF-IDF":
                     col1, col2 = st.columns(2)
                     with col1:
                         st.subheader("Hasil TF-IDF(Top Terms)")
-                        # Pilihan kolom yang ingin ditampilkan
                         tfidf_cols = st.session_state['tfidf_ranking'].columns.tolist()
                         st.dataframe(st.session_state['tfidf_ranking'].reset_index(drop=True))
                         # Ekspor hasil ranking
@@ -381,11 +380,11 @@ elif st.session_state['tab'] == "Pengujian":
     with tab1:
         st.subheader("Naive Bayes")
 
-        # Pastikan TF-IDF sudah dihitung
+        # Ensure TF-IDF is calculated
         if 'tfidf_df' not in st.session_state:
             st.warning("Silakan lakukan perhitungan TF-IDF terlebih dahulu.")
         else:
-            # Pilih data berdasarkan apakah SMOTE diterapkan
+            # Select data based on whether SMOTE is applied
             if 'tfidf_resampled' in st.session_state and st.session_state['tfidf_resampled'] is not None:
                 df = st.session_state['tfidf_resampled'].copy()
                 st.info("Menggunakan data yang telah di-resample dengan SMOTE untuk klasifikasi.")
@@ -393,7 +392,7 @@ elif st.session_state['tab'] == "Pengujian":
                 df = st.session_state['tfidf_df'].copy()
                 st.info("Menggunakan data asli (tanpa SMOTE) untuk klasifikasi.")
 
-            # Validasi kolom penting
+            # Validate important columns
             if 'TF_IDF_Vec' not in df.columns or df['TF_IDF_Vec'].isnull().all():
                 st.error("Kolom 'TF_IDF_Vec' tidak ditemukan atau kosong. Pastikan TF-IDF sudah dihitung.")
             elif 'sentiment' not in df.columns:
@@ -404,40 +403,108 @@ elif st.session_state['tab'] == "Pengujian":
                     st.error("Vocabulary TF_IDF_Vec (selected_terms) tidak ditemukan di session_state.")
                     st.stop()
 
-                # Konversi vektor TF-IDF ke format yang sesuai (List[List[float]])
+                # Convert TF-IDF vectors to appropriate format
                 features = [list(vec) for vec in df['TF_IDF_Vec']]
                 labels = df['sentiment'].tolist()
-                       
-                # Stratified Split
-                train_df, test_df = stratified_split(df, label_col='sentiment', test_ratio=0.2)
-                st.info(f"Jumlah Data Latih: {len(train_df)} | Jumlah Data Uji: {len(test_df)}")
-                train_features = [list(vec) for vec in train_df['TF_IDF_Vec']]
-                test_features = [list(vec) for vec in test_df['TF_IDF_Vec']]
-                train_labels = train_df['sentiment'].tolist()
-                test_labels = test_df['sentiment'].tolist()
-                alpha = st.number_input("Alpha (Laplace Smoothing)", min_value=0.0, max_value=2.0, value=0.01, step=0.01, format="%.2f", key="alpha_nb_split")
-                if st.button("Latih Model Naive Bayes"):
-                    with st.spinner("Melatih model Naive Bayes"):
-                        try:
-                            model = prepare_naive_bayes_model(
-                                X_train=train_features,
-                                y_train=train_labels,
-                                selected_terms=selected_terms,
-                                alpha=alpha
-                            )
-                            st.session_state['naive_bayes_model'] = model
-                            results = evaluate_model(model, test_features, test_labels)
-                            st.session_state['naive_bayes_results'] = results
-                            st.success("Model Naive Bayes berhasil dilatih!")
-                        except Exception as e:
-                            st.error(f"Terjadi kesalahan saat melatih model: {str(e)}")
-                            st.stop()
 
-                # Tampilkan hasil jika sudah dilatih
+                # Choose splitting method
+                with st.expander("Pengaturan Naive Bayes", expanded=False):
+                    # Pilihan metode pelatihan
+                    split_method = st.radio(
+                        "Pilih Metode Pelatihan",
+                        ["Stratified Split (80:20)", "K-Fold Cross-Validation"],
+                        key="split_method_nb"
+                    )
+                    alpha = st.number_input(
+                        "Alpha (Laplace Smoothing)",
+                        min_value=0.0,
+                        max_value=2.0,
+                        value=0.01,
+                        step=0.01,
+                        format="%.2f",
+                        key="alpha_nb"
+                    )                    
+                    n_folds = st.number_input("Jumlah Folds (K-Fold)", min_value=2, max_value=15, value=5, step=1, key="n_folds_nb")
+                                
+                if split_method == "Stratified Split (80:20)":
+                    # Stratified Split
+                    train_df, test_df = stratified_split(df, label_col='sentiment', test_ratio=0.2)                    
+                    train_features = [list(vec) for vec in train_df['TF_IDF_Vec']]
+                    test_features = [list(vec) for vec in test_df['TF_IDF_Vec']]
+                    train_labels = train_df['sentiment'].tolist()
+                    test_labels = test_df['sentiment'].tolist()
+
+                    if st.button("Latih Model Naive Bayes"):
+                        st.info(f"Jumlah Data Latih: {len(train_df)} | Jumlah Data Uji: {len(test_df)}")
+                        with st.spinner("Melatih model Naive Bayes dengan metode {split_method}..."):
+                            try:
+                                model = prepare_naive_bayes_model(
+                                    X_train=train_features,
+                                    y_train=train_labels,
+                                    selected_terms=selected_terms,
+                                    alpha=alpha
+                                )
+                                st.session_state['naive_bayes_model'] = model
+                                results = evaluate_model(model, test_features, test_labels)
+                                st.session_state['naive_bayes_results'] = results
+                                st.success("Model Naive Bayes berhasil dilatih dengan Stratified Split (80:20)!")
+                            except Exception as e:
+                                st.error(f"Terjadi kesalahan saat melatih model: {str(e)}")
+                                st.stop()
+
+                else:  # K-Fold Cross-Validation
+                    if st.button("Latih Model Naive Bayes"):
+                        with st.spinner(f"Melatih model Naive Bayes dengan metode {split_method}..."):
+                            try:
+                                # Convert features to numpy array as required by k_fold_cross_validation_nb
+                                features_np = np.array(features)
+                                labels_np = np.array(labels)
+
+                                # Run k-fold cross-validation using provided function
+                                avg_accuracy, avg_precision, avg_recall, avg_cm, avg_class_f1_scores = k_fold_cross_validation_nb(
+                                    X=features_np,
+                                    y=labels_np,
+                                    selected_terms=selected_terms,
+                                    alpha=alpha,
+                                    k=n_folds
+                                )
+
+                                # Train a final model on all data for predictions
+                                model = prepare_naive_bayes_model(
+                                    X_train=features,
+                                    y_train=labels,
+                                    selected_terms=selected_terms,
+                                    alpha=alpha
+                                )
+
+                                # Prepare results in the same format as evaluate_model
+                                classes = np.unique(labels)
+                                results = {
+                                    'accuracy': avg_accuracy,
+                                    'confusion_matrix': avg_cm.astype(int),  # Convert to int for display
+                                    'precision': {c: p for c, p in zip(classes, avg_precision)},
+                                    'recall': {c: r for c, r in zip(classes, avg_recall)},
+                                    'f1_score': {c: f for c, f in zip(classes, avg_class_f1_scores)},
+                                    'macro_precision': np.mean(avg_precision),
+                                    'macro_recall': np.mean(avg_recall),
+                                    'macro_f1': np.mean(avg_class_f1_scores),
+                                    'classes': classes,
+                                    split_method : 'kfold'
+                                }
+
+                                # Store results and model
+                                st.session_state['naive_bayes_model'] = model
+                                st.session_state['naive_bayes_results'] = results
+                                st.success(f"Model Naive Bayes dengan {n_folds}-fold cross-validation berhasil dilatih!")
+                            except Exception as e:
+                                st.error(f"Terjadi kesalahan saat melatih model: {str(e)}")
+                                st.stop()
+
+                # Display results if available
                 if 'naive_bayes_results' in st.session_state:
                     results = st.session_state['naive_bayes_results']
                     labels = results['classes']
-                    st.markdown("## 🎯 Performa Model")
+                    st.markdown(f"## 🎯 Performa Model")
                     st.metric("🎯 Akurasi Total", f"{results['accuracy']:.4f}")
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -469,10 +536,19 @@ elif st.session_state['tab'] == "Pengujian":
                     st.session_state['nb_cm'] = results['confusion_matrix']
                     st.session_state['nb_labels'] = labels
                     st.markdown("### 🔍 Contoh Prediksi")
-                    test_df = test_df.copy()
-                    test_df['Prediksi'] = st.session_state['naive_bayes_model'].predict(test_features)
-                    test_df['Benar/Salah'] = test_df['sentiment'] == test_df['Prediksi']
-                    st.dataframe(test_df[['sentiment', 'Prediksi', 'Benar/Salah']].head(10))
+                    if split_method == "Stratified Split":
+                        test_df = test_df.copy()
+                        test_df['Prediksi'] = st.session_state['naive_bayes_model'].predict(test_features)
+                        test_df['Benar/Salah'] = test_df['sentiment'] == test_df['Prediksi']
+                        st.dataframe(test_df[['sentiment', 'Prediksi', 'Benar/Salah']].head(10))
+                    else:
+                        # For k-fold, show predictions from the final model on a subset
+                        subset_df = df.head(10).copy()
+                        subset_features = [list(vec) for vec in subset_df['TF_IDF_Vec']]
+                        subset_labels = subset_df['sentiment'].tolist()
+                        subset_df['Prediksi'] = st.session_state['naive_bayes_model'].predict(subset_features)
+                        subset_df['Benar/Salah'] = subset_df['sentiment'] == subset_df['Prediksi']
+                        st.dataframe(subset_df[['sentiment', 'Prediksi', 'Benar/Salah']])
 
     # Tab Logistic Regression
     with tab2:
@@ -506,25 +582,25 @@ elif st.session_state['tab'] == "Pengujian":
                     )
                     num_iter = st.number_input("Jumlah Iterasi", min_value=100, max_value=5000, value=1000, step=100)
                     learning_rate = st.number_input("Learning Rate", min_value=0.001, max_value=1.0, value=0.01, step=0.001, format="%.3f")
-                    k_folds = st.number_input("Jumlah Folds (K-Fold)", min_value=2, max_value=10, value=5, step=1)
+                    k_folds = st.number_input("Jumlah Folds (K-Fold)", min_value=2, max_value=15, value=5, step=1)
                 if st.button("Latih Model Logistic Regression"):
                     with st.spinner(f"Melatih model Logistic Regression dengan metode {training_method}..."):
                         try:
                             model = LogisticRegression(num_iter=num_iter, learning_rate=learning_rate)
                             if training_method == "K-Fold Cross Validation":
-                                avg_accuracy, avg_precision, avg_recall, avg_cm, avg_class_accuracies, _, _ = k_fold_cross_validation(X, y, model, k=k_folds)
+                                avg_accuracy, avg_precision, avg_recall, avg_cm, avg_class_f1_scores, _, _ = k_fold_cross_validation(X, y, model, k=k_folds)
                                 st.session_state['lr_model'] = model
                                 st.session_state['lr_results'] = {
                                     'avg_accuracy': avg_accuracy,
                                     'avg_precision': avg_precision,
                                     'avg_recall': avg_recall,
                                     'avg_cm': avg_cm,
-                                    'avg_class_accuracies': avg_class_accuracies,
+                                    'avg_f1_scores': avg_class_f1_scores,
                                     'labels': [inverse_label_map[i] for i in range(len(label_map))],
                                     'training_method': 'kfold'
                                 }
                             else:  # Stratified Split
-                                from mlr import stratified_split, calculate_accuracy, calculate_precision, calculate_recall, calculate_class_accuracy, calculate_confusion_matrix
+                                from mlr import stratified_split, calculate_accuracy, calculate_precision, calculate_recall, calculate_f1_score, calculate_confusion_matrix
                                 train_df, test_df = stratified_split(df, label_col='sentiment', test_ratio=0.2)
                                 st.info(f"Jumlah Data Latih: {len(train_df)} | Jumlah Data Uji: {len(test_df)}")
                                 X_train = np.array([list(vec) for vec in train_df['TF_IDF_Vec']])
@@ -536,7 +612,7 @@ elif st.session_state['tab'] == "Pengujian":
                                 accuracy = calculate_accuracy(y_test, y_pred)
                                 precision = calculate_precision(y_test, y_pred)
                                 recall = calculate_recall(y_test, y_pred)
-                                class_accuracies = calculate_class_accuracy(y_test, y_pred)
+                                avg_class_f1_scores = calculate_f1_score(y_test, y_pred)
                                 cm = calculate_confusion_matrix(y_test, y_pred, len(label_map))
                                 st.session_state['lr_model'] = model
                                 st.session_state['lr_results'] = {
@@ -544,7 +620,7 @@ elif st.session_state['tab'] == "Pengujian":
                                     'avg_precision': precision,
                                     'avg_recall': recall,
                                     'avg_cm': cm,
-                                    'avg_class_accuracies': class_accuracies,
+                                    'avg_f1_scores': avg_class_f1_scores,
                                     'labels': [inverse_label_map[i] for i in range(len(label_map))],
                                     'training_method': 'split',
                                     'test_df': test_df  # simpan untuk contoh prediksi
@@ -577,9 +653,9 @@ elif st.session_state['tab'] == "Pengujian":
                             st.write(f"{label.capitalize()}: {results['avg_precision'][i]:.4f}")
 
                     with col3:
-                        st.markdown("### Akurasi per Kelas:")
+                        st.markdown("### F1-Score per Kelas:")
                         for i, label in enumerate(labels):
-                            st.write(f"{label.capitalize()}: {results['avg_class_accuracies'][i]:.4f}")
+                            st.write(f"{label.capitalize()}: {results['avg_f1_scores'][i]:.4f}")
 
                     # Confusion Matrix
                     st.markdown(f"### 📊 Confusion Matrix ({'Rata-rata' if training_method == 'kfold' else 'Split'})")
