@@ -80,19 +80,17 @@ def calculate_recall(y_true, y_pred):
         recall[class_] = true_positives / (true_positives + false_negatives + 1e-10)
     return recall
 
-# Function to calculate class-wise accuracy
-def calculate_class_accuracy(y_true, y_pred):
+def calculate_f1_score(y_true, y_pred):
     num_classes = len(np.unique(y_true))
-    class_accuracies = {}
+    f1_scores = np.zeros(num_classes)
     for class_ in range(num_classes):
-        true_class = y_true == class_
-        pred_class = y_pred == class_
-        if np.sum(true_class) == 0:  # Avoid division by zero
-            accuracy = np.nan
-        else:
-            accuracy = np.sum(true_class & pred_class) / np.sum(true_class)
-        class_accuracies[class_] = accuracy
-    return class_accuracies
+        true_positives = np.sum((y_true == class_) & (y_pred == class_))
+        false_positives = np.sum((y_true != class_) & (y_pred == class_))
+        false_negatives = np.sum((y_true == class_) & (y_pred != class_))
+        precision = true_positives / (true_positives + false_positives + 1e-10)
+        recall = true_positives / (true_positives + false_negatives + 1e-10)
+        f1_scores[class_] = 2 * precision * recall / (precision + recall + 1e-10)
+    return f1_scores
 
 # Function to calculate the confusion matrix
 def calculate_confusion_matrix(y_true, y_pred, num_classes):
@@ -121,7 +119,7 @@ def k_fold_cross_validation(X, y, model, k=10):
     accuracy_scores = []
     precision_scores = []
     recall_scores = []
-    all_class_accuracies = []
+    all_class_f1_scores = []
     all_precision = []
     all_recall = []
 
@@ -139,19 +137,22 @@ def k_fold_cross_validation(X, y, model, k=10):
         accuracy = calculate_accuracy(y_test, y_pred)
         precision = calculate_precision(y_test, y_pred)
         recall = calculate_recall(y_test, y_pred)
-        class_accuracies = calculate_class_accuracy(y_test, y_pred)
+        f1_score = calculate_f1_score(y_test, y_pred)
         confusion = calculate_confusion_matrix(y_test, y_pred, num_classes)
 
         total_cm += confusion
         accuracy_scores.append(accuracy)
         precision_scores.append(precision)
         recall_scores.append(recall)
-        all_class_accuracies.append(class_accuracies)
+        all_class_f1_scores.append(f1_score)
         all_precision.append(precision)
         all_recall.append(recall)
 
-    # Average accuracy per class
-    avg_class_accuracies = {key: np.nanmean([acc.get(key, np.nan) for acc in all_class_accuracies]) for key in all_class_accuracies[0]}
+    # Convert all_class_f1_scores to numpy array for easier averaging
+    all_class_f1_scores = np.array(all_class_f1_scores)
+    
+    # Calculate average F1-Score per class
+    avg_class_f1_scores = np.nanmean(all_class_f1_scores, axis=0)
 
     # Make sure all_precision and all_recall are arrays of the same length
     all_precision = np.array([np.pad(p, (0, num_classes - len(p)), 'constant', constant_values=np.nan) for p in all_precision])
@@ -161,4 +162,4 @@ def k_fold_cross_validation(X, y, model, k=10):
     avg_recall_per_class = np.nanmean(all_recall, axis=0)
 
     return (np.mean(accuracy_scores), avg_precision_per_class, avg_recall_per_class,
-            total_cm / k, avg_class_accuracies, avg_precision_per_class, avg_recall_per_class)
+            total_cm / k, avg_class_f1_scores, avg_precision_per_class, avg_recall_per_class)
