@@ -20,7 +20,7 @@ def generate_ngrams(tokens, ngram_range=(1, 3)):
     return ngrams
 
 # Hitung TF
-def calc_TF(document, use_sublinear=True):
+def calc_TF(document, use_sublinear):
     TF_dict = {}
     for term in document:
         TF_dict[term] = TF_dict.get(term, 0) + 1
@@ -79,15 +79,18 @@ def calc_TF_IDF_Vec(TF_IDF_Dict, selected_terms):
     return TF_IDF_vector
 
 # Fungsi utama menghitung TF-IDF
+#Set ngram_range, top_k, dan apply_smote sesuai kebutuhan
 def calculate_tfidf(df, top_k=500, ngram_range=(1, 3), label_column='sentiment', apply_smote=True, smote_random_state=42):
     # Konversi teks dan buat n-gram
     df["text_list"] = df["stemming"].apply(convert_text_list)
     df["ngrams"] = df["text_list"].apply(lambda x: generate_ngrams(x, ngram_range))
+    #Set Sublinear TF
     df["TF_dict"] = df["ngrams"].apply(lambda x: calc_TF(x, use_sublinear=True))
     
     # Hitung DF dan IDF
-    DF = calc_DF(df["TF_dict"], min_df=3, max_df_ratio=0.8)
+    DF = calc_DF(df["TF_dict"], min_df=3)
     n_document = len(df)
+    #Set Smoothing IDF
     IDF = calc_IDF(n_document, DF, smooth=True)
     df["TF-IDF_dict"] = df["TF_dict"].apply(lambda tf: calc_TF_IDF(tf, IDF))
 
@@ -110,7 +113,7 @@ def calculate_tfidf(df, top_k=500, ngram_range=(1, 3), label_column='sentiment',
         idf_val = IDF.get(term, 0)
         data.append((term, TF_IDF_Sum[term], tf_avg, df_val, idf_val))
 
-    ranking = pd.DataFrame(data, columns=['term', 'TF-IDF', 'tf', 'df', 'idf'])
+    ranking = pd.DataFrame(data, columns=['term', 'TF-IDF', 'TF_avg', 'DF', 'IDF'])
     ranking = ranking.sort_values('TF-IDF', ascending=False)
 
     # Seleksi fitur berdasarkan TF-IDF tertinggi
