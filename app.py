@@ -288,7 +288,7 @@ elif st.session_state['tab'] == "TF-IDF":
                     col1, col2 = st.columns(2)
                     with col1:
                         top_k = st.number_input("Jumlah Fitur (Top-K)", 
-                                            min_value=100, max_value=5000, value=500, step=100)
+                                            min_value=500, max_value=5000, value=1000, step=100)
                         apply_smote = st.checkbox("Terapkan SMOTE", value=True, help="Aktifkan SMOTE untuk menyeimbangkan kelas")
                     
                     with col2:
