@@ -182,6 +182,7 @@ def plot_confusion_matrix_streamlit(conf_matrix, labels):
 def k_fold_cross_validation_nb(X, y, selected_terms=None, alpha=1.0, k=5):
     from naivebayes import NaiveBayes
     from naivebayes import evaluate_model
+    
     X = np.array(X)
     y = np.array(y)
     n_samples = len(y)
@@ -195,6 +196,7 @@ def k_fold_cross_validation_nb(X, y, selected_terms=None, alpha=1.0, k=5):
     recall_scores = []
     all_class_accuracies = []
     total_cm = None
+
     for fold_size in fold_sizes:
         start, stop = current, current + fold_size
         test_idx = indices[start:stop]
@@ -208,11 +210,13 @@ def k_fold_cross_validation_nb(X, y, selected_terms=None, alpha=1.0, k=5):
         precision_scores.append(list(results['precision'].values()))
         recall_scores.append(list(results['recall'].values()))
         all_class_accuracies.append(list(results['f1_score'].values()))
+
         if total_cm is None:
             total_cm = results['confusion_matrix'].astype(float)
         else:
             total_cm += results['confusion_matrix']
         current = stop
+    
     avg_accuracy = np.mean(accuracy_scores)
     avg_precision = np.mean(precision_scores, axis=0)
     avg_recall = np.mean(recall_scores, axis=0)
