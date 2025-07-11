@@ -25,12 +25,12 @@ def calc_TF(document, use_sublinear):
     for term in document:
         TF_dict[term] = TF_dict.get(term, 0) + 1
     
-    doc_len = len(document) if len(document) != 0 else 1
+
     for term in TF_dict:
         if use_sublinear and TF_dict[term] > 0:
             TF_dict[term] = 1 + np.log(TF_dict[term])
         else:
-            TF_dict[term] /= doc_len
+            TF_dict[term] /= len(document)
     return TF_dict
 
 # Hitung DF
@@ -59,7 +59,7 @@ def calc_IDF(n_document, DF, smooth=True):
         if smooth:
             IDF_Dict[term] = np.log((n_document + 1) / (DF[term] + 1)) + 1
         else:
-            IDF_Dict[term] = np.log(n_document / DF[term])
+            IDF_Dict[term] = np.log(n_document / (DF[term]))
     return IDF_Dict
 
 # Hitung TF-IDF
@@ -80,7 +80,7 @@ def calc_TF_IDF_Vec(TF_IDF_Dict, selected_terms):
 
 # Fungsi utama menghitung TF-IDF
 #Set ngram_range, top_k, dan apply_smote sesuai kebutuhan
-def calculate_tfidf(df, top_k=500, ngram_range=(1, 3), label_column='sentiment', apply_smote=True, smote_random_state=42):
+def calculate_tfidf(df, top_k=5000, ngram_range=(1, 3), label_column='sentiment', apply_smote=True, smote_random_state=42):
     # Konversi teks dan buat n-gram
     df["text_list"] = df["stemming"].apply(convert_text_list)
     df["ngrams"] = df["text_list"].apply(lambda x: generate_ngrams(x, ngram_range))
