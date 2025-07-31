@@ -10,7 +10,7 @@ import emoji
 from collections import Counter
 
 # Download resource NLTK
-nltk.download(['stopwords', 'punkt_tab'])
+#nltk.download(['stopwords', 'punkt_tab'])
 
 # --- CLEANING FUNCTION ---
 def cleaning_text(text):
