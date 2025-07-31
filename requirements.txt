@@ -5,3 +5,4 @@ seaborn
 mysql-connector-python
 scikit-learn
 imbalanced-learn
+nltk
