@@ -1,8 +1,7 @@
-streamlit
 numpy
 pandas
-nltk
 matplotlib
 seaborn
-requests
-sastrawi
+mysql-connector-python
+scikit-learn
+imbalanced-learn
