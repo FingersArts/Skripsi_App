@@ -5,12 +5,13 @@ import time
 from preprocessing.preprocessing import preproces
 from tfidf import calculate_tfidf
 from labelling import apply_score_based_labeling
-from naivebayes import evaluate_model, k_fold_cross_validation_nb, plot_confusion_matrix_streamlit, prepare_naive_bayes_model, stratified_split
+from naivebayes import evaluate_model, k_fold_cross_validation_nb, plot_confusion_matrix_streamlit, prepare_naive_bayes_model, stratified_split_scratch
 from mlr import LogisticRegression, plot_confusion_matrix, k_fold_cross_validation
 import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
-st.title('ANALISIS SENTIMEN 100 HARI KERJA :orange[PRESIDEN PRABOWO SUBIANTO]')
+#st.title('ANALISIS SENTIMEN 100 HARI KERJA :orange[PRESIDEN PRABOWO SUBIANTO]')
+st.title('Which One is Better? :blue[Naive Bayes] vs :red[Multinomial Logistic Regression]')
 
 # Sidebar navigasi
 st.sidebar.markdown("## 📌 Navigasi")
@@ -428,7 +429,7 @@ elif st.session_state['tab'] == "Pengujian":
                                 
                 if split_method == "Stratified Split (80:20)":
                     # Stratified Split
-                    train_df, test_df = stratified_split(df, label_col='sentiment', test_ratio=0.2)                    
+                    train_df, test_df = stratified_split_scratch(df, label_col='sentiment', test_ratio=0.2)                    
                     train_features = [list(vec) for vec in train_df['TF_IDF_Vec']]
                     test_features = [list(vec) for vec in test_df['TF_IDF_Vec']]
                     train_labels = train_df['sentiment'].tolist()
@@ -600,8 +601,8 @@ elif st.session_state['tab'] == "Pengujian":
                                     'training_method': 'kfold'
                                 }
                             else:  # Stratified Split
-                                from mlr import stratified_split, calculate_accuracy, calculate_precision, calculate_recall, calculate_f1_score, calculate_confusion_matrix
-                                train_df, test_df = stratified_split(df, label_col='sentiment', test_ratio=0.2)
+                                from mlr import stratified_split_scratch, calculate_accuracy, calculate_precision, calculate_recall, calculate_f1_score, calculate_confusion_matrix
+                                train_df, test_df = stratified_split_scratch(df, label_col='sentiment', test_ratio=0.2)
                                 st.info(f"Jumlah Data Latih: {len(train_df)} | Jumlah Data Uji: {len(test_df)}")
                                 X_train = np.array([list(vec) for vec in train_df['TF_IDF_Vec']])
                                 y_train = train_df['sentiment_idx'].values
