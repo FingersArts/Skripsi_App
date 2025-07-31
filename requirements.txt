@@ -1,11 +1,7 @@
-streamlit
 numpy
 pandas
-nltk
 matplotlib
 seaborn
-requests
-sastrawi
-emoji
-mysql.connector
-nltk_data
+mysql-connector-python
+scikit-learn
+imbalanced-learn
