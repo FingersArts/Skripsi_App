@@ -169,6 +169,42 @@ def stratified_split(df, label_col='sentiment', test_ratio=0.2):
     train_df, test_df = train_test_split(df, test_size=test_ratio, stratify=df[label_col], random_state=42)
     return train_df, test_df
 
+def stratified_split_scratch(df, label_col='sentiment', test_ratio=0.2):
+    # Set random seed
+    np.random.seed(42)
+    
+    # Ambil kelas unik dari kolom label
+    classes = df[label_col].unique()
+    
+    # Inisialisasi dataframe kosong untuk train dan test
+    train_df = pd.DataFrame()
+    test_df = pd.DataFrame()
+    
+    # Untuk setiap kelas, bagi data dengan mempertahankan proporsi kelas
+    for cls in classes:
+        # Dapatkan semua sampel untuk kelas ini
+        class_data = df[df[label_col] == cls]
+
+        # Hitung jumlah sampel untuk set test
+        n_test = int(len(class_data) * test_ratio)
+        
+        # acak indeks untuk membagi data
+        indices = np.random.permutation(len(class_data))
+        
+        # split indeks menjadi train dan test
+        test_indices = indices[:n_test]
+        train_indices = indices[n_test:]
+        
+        # Ambil data untuk train dan test
+        train_df = pd.concat([train_df, class_data.iloc[train_indices]])
+        test_df = pd.concat([test_df, class_data.iloc[test_indices]])
+    
+    # Reset index untuk train dan test dataframe
+    train_df = train_df.reset_index(drop=True)
+    test_df = test_df.reset_index(drop=True)
+    
+    return train_df, test_df
+
 # Fungsi untuk visualisasi confusion matrix (tetap sama)
 def plot_confusion_matrix_streamlit(conf_matrix, labels):
     import seaborn as sns
