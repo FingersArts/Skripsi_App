@@ -8,3 +8,4 @@ requests
 sastrawi
 emoji
 mysql.connector
+nltk_data
