@@ -129,6 +129,7 @@ def calculate_tfidf(df, top_k=5000, ngram_range=(1, 3), label_column='sentiment'
         X = np.array(df["TF_IDF_Vec"].to_list())
         y = df[label_column].to_numpy()
         
+        
         smote = SMOTE(random_state=smote_random_state)
         X_resampled, y_resampled = smote.fit_resample(X, y)
         
