@@ -9,4 +9,4 @@ nltk
 wordcloud
 Sastrawi
 emoji
-imblearn>=0.11.0
+imblearn
