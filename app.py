@@ -354,7 +354,7 @@ elif st.session_state['tab'] == "TF-IDF":
                     with col2:
                         # Wordcloud untuk hasil TF-IDF
                         st.subheader("Wordcloud Top TF-IDF Terms")
-                        from wordcloud import WordCloud
+                        from wordcloud import WordCloud # pyright: ignore[reportMissingImports]
                         # Deteksi nama kolom skor tfidf
                         tfidf_df = st.session_state['tfidf_ranking']
                         score_col = None
